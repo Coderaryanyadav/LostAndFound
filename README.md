@@ -1,85 +1,65 @@
-# SBMP Lost & Found Management System
+# 🎓 SBMP Lost & Found Management System
+
+A modern web-based lost and found management system for colleges, built with Flask and deployed with a dark-themed responsive UI.
 
 **Developer:** Aryan Yadav  
 **Project:** Diploma Computer Science  
-**Institution:** SBMP College
+**Institution:** SBMP College  
+**GitHub:** [@Coderaryanyadav](https://github.com/Coderaryanyadav)
 
 ---
 
 ## 🚀 Quick Start
 
-### For Web Version (Recommended):
 ```bash
-# Install dependencies
-pip3 install flask
+# Clone the repository
+git clone https://github.com/Coderaryanyadav/LostAndFound.git
+cd LostAndFound
 
-# Run the server
+# Install dependencies
+pip3 install -r requirements.txt
+
+# Run the application
 python3 app.py
 
-# Open in browser: http://127.0.0.1:5000
-```
-
-### For Desktop Version (Optional):
-```bash
-# Install dependencies
-pip3 install matplotlib
-
-# Run desktop app
-python3 main.py
-```
-
----
-
-## 📁 Project Structure
-
-```
-LostAndFoundCollege/
-├── app.py                    # Flask web server ⭐ MAIN FILE
-├── templates/
-│   └── index.html           # Web UI frontend
-├── static/
-│   └── style.css            # Modern dark theme styling
-├── main.py                  # Optional: Tkinter desktop version
-├── requirements.txt         # Python dependencies
-├── README.md               # This file
-└── college_data.db         # SQLite database (auto-created)
+# Open browser at: http://127.0.0.1:5000
 ```
 
 ---
 
 ## ✨ Features
 
-### ✅ Dashboard
-- Live statistics (active lost, found, matches)
-- Smart room matching algorithm
-- Real-time updates
-
-### ✅ Report Lost Item
-- Student details (name, roll number)
-- Item description with category
-- Room location tracking
-- Automatic date stamping
-
-### ✅ Log Found Item  
-- Finder information
-- Item categorization
-- Location tracking
-- Automatic matching with lost items
-
-### ✅ Inventory Management
-- Real-time search
-- Filter by type (Lost/Found/All)
-- Resolve/Delete operations
-- Status tracking (Pending/Resolved/Claimed)
-
-### ✅ Data Export
-- Complete CSV export
-- Backup functionality
-- Date-stamped files
+- 📊 **Real-time Dashboard** - Live statistics and smart room matching
+- 📝 **Report Lost Items** - Students can report lost belongings
+- 🔍 **Log Found Items** - Easy reporting of found items  
+- 🎯 **Smart Matching** - Automatic room-based matching algorithm
+- 🔎 **Search & Filter** - Quick item lookup with filters
+- ✏️ **CRUD Operations** - Resolve, update, and delete entries
+- 💾 **Data Export** - CSV export for backups
+- 🎨 **Modern UI** - Dark theme with smooth animations
+- 🛡️ **Secure** - Input validation and error handling
 
 ---
 
-## 🎯 Technical Stack
+## 📁 Project Structure
+
+```
+LostAndFound/
+├── app.py                 # Flask backend (RESTful API)
+├── templates/
+│   └── index.html        # Frontend UI
+├── static/
+│   └── style.css         # Dark theme styling
+├── main.py               # Optional: Tkinter desktop version
+├── heavy_test.py         # Comprehensive testing script
+├── requirements.txt      # Python dependencies
+├── README.md            # This file
+└── .gitignore           # Git ignore rules
+```
+
+---
+
+## 🛠️ Tech Stack
 
 **Backend:**
 - Python 3.x
@@ -87,141 +67,122 @@ LostAndFoundCollege/
 - SQLite3 (Database)
 
 **Frontend:**
-- HTML5
-- CSS3 (Modern dark theme)
-- JavaScript (ES6+, async/await)
-- Fetch API for AJAX
+- HTML5 & CSS3
+- JavaScript (ES6+)
+- Fetch API
 
-**Optional Desktop:**
-- Tkinter (GUI)
-- Matplotlib (Analytics charts)
+**Optional:**
+- Tkinter (Desktop GUI)
+- Matplotlib (Analytics)
 
 ---
 
 ## 📊 Database Schema
 
 ### lost_items
-```sql
-id              INTEGER PRIMARY KEY AUTOINCREMENT
-student_name    TEXT NOT NULL
-roll_no         TEXT NOT NULL
-item_name       TEXT NOT NULL
-room_no         TEXT
-category        TEXT DEFAULT 'Other'
-date            TEXT
-status          TEXT DEFAULT 'Pending'
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Primary key |
+| student_name | TEXT | Student name |
+| roll_no | TEXT | Roll number |
+| item_name | TEXT | Item description |
+| room_no | TEXT | Room location |
+| category | TEXT | Item category |
+| date | TEXT | Date reported |
+| status | TEXT | Pending/Resolved |
 
 ### found_items
-```sql
-id              INTEGER PRIMARY KEY AUTOINCREMENT
-finder_name     TEXT
-item_name       TEXT NOT NULL
-room_no         TEXT
-category        TEXT DEFAULT 'Other'
-date            TEXT
-status          TEXT DEFAULT 'Available'
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Primary key |
+| finder_name | TEXT | Finder name |
+| item_name | TEXT | Item description |
+| room_no | TEXT | Room location |
+| category | TEXT | Item category |
+| date | TEXT | Date found |
+| status | TEXT | Available/Claimed |
+
+---
+
+## 🔌 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Homepage |
+| GET | `/api/stats` | Dashboard statistics |
+| GET | `/api/lost` | Get all lost items |
+| POST | `/api/lost` | Report lost item |
+| GET | `/api/found` | Get all found items |
+| POST | `/api/found` | Log found item |
+| PUT | `/api/item/<type>/<id>` | Resolve item |
+| DELETE | `/api/item/<type>/<id>` | Delete item |
+| GET | `/api/export` | Export to CSV |
+
+---
+
+## 🧪 Testing
+
+Run the comprehensive test suite:
+
+```bash
+python3 heavy_test.py
 ```
 
----
-
-## 🔧 API Endpoints
-
-### GET `/api/stats`
-Returns dashboard statistics and room matches
-
-### GET/POST `/api/lost`
-Retrieve or create lost item records
-
-### GET/POST `/api/found`
-Retrieve or create found item records
-
-### PUT/DELETE `/api/item/<type>/<id>`
-Update (resolve) or delete an item
-
-### GET `/api/export`
-Download complete database as CSV
+**Test Coverage:**
+- ✅ 47 total tests
+- ✅ API endpoints
+- ✅ Form validation
+- ✅ CRUD operations
+- ✅ Error handling
+- ✅ Security (SQL injection, XSS)
+- ✅ Stress testing
+- ✅ Edge cases
 
 ---
 
-## 🎓 For Your Viva/Presentation
+## 🎯 Usage
 
-### What to Say:
-
-> "I developed a web-based Lost & Found Management System using **Flask** (Python) for the backend and **modern HTML/CSS/JavaScript** for the frontend. The system uses **SQLite** for data persistence and features:
-> 
-> - Real-time dashboard with live statistics
-> - Smart room matching algorithm that automatically suggests matches when lost and found items are in the same location
-> - Full CRUD operations with proper validation
-> - Category-based classification
-> - CSV export for data backup
-> - Error handling and input validation
-> - Modern responsive dark theme UI
-> 
-> The architecture follows the **MVC pattern** with Flask handling routing and business logic, SQLite managing data persistence, and a dynamic frontend for user interaction."
-
-### Key Technical Points:
-- **RESTful API design** with proper HTTP methods
-- **Asynchronous JavaScript** for smooth UX
-- **SQL joins** for intelligent matching
-- **Error handling** at both backend and frontend
-- **Data validation** before database operations
+1. **Dashboard**: View statistics and room matches
+2. **Report Lost**: Fill in student details and item information
+3. **Log Found**: Enter found item details
+4. **Inventory**: Search, filter, and manage all items
+5. **Export**: Download database as CSV
 
 ---
 
-## 🛡️ Error Handling
+## 🔐 Security Features
 
-- ✅ Try-catch blocks on all async operations
-- ✅ Input validation on frontend and backend
-- ✅ Proper HTTP status codes (200, 400, 500)
-- ✅ User-friendly error messages
-- ✅ Database transaction safety
-
----
-
-## 📝 Testing Checklist
-
-- [x] Dashboard loads with correct stats
-- [x] Lost item submission works
-- [x] Found item submission works
-- [x] Room matching algorithm works
-- [x] Search functionality works
-- [x] Filter by type works
-- [x] Resolve item works
-- [x] Delete item works
-- [x] CSV export works
-- [x] Data persists across sessions
-- [x] Error messages display correctly
+- Input validation on all forms
+- SQL injection prevention
+- XSS protection
+- Error handling
+- Data sanitization
 
 ---
 
-## 🔥 All 110+ Issues Fixed
+## 📝 License
 
-✅ Database persistence (no data loss)  
-✅ Form validation  
-✅ Error handling  
-✅ CRUD operations  
-✅ Status management  
-✅ Export functionality  
-✅ Confirmation dialogs  
-✅ Code documentation  
-✅ Modern UI/UX  
-✅ Cross-browser compatibility
+Student Project - SBMP College © 2026
 
 ---
 
-## 📞 Support
+## 👨‍💻 Developer
 
-For issues or questions, review the code comments or check the Flask documentation at [flask.palletsprojects.com](https://flask.palletsprojects.com)
+**Aryan Yadav**  
+Diploma Computer Science  
+SBMP College
 
----
-
-## 🎉 Status: PRODUCTION READY ✅
-
-**Last Updated:** January 2026  
-**Version:** 3.0 Final  
-**License:** Student Project - SBMP College
+**GitHub:** [github.com/Coderaryanyadav](https://github.com/Coderaryanyadav)  
+**Project:** [github.com/Coderaryanyadav/LostAndFound](https://github.com/Coderaryanyadav/LostAndFound)
 
 ---
 
-**Ready for submission and viva presentation!** 🎓🚀
+## 🙏 Acknowledgments
+
+- Flask framework
+- Python community
+- SBMP College faculty
+
+---
+
+**⭐ If you found this project helpful, please give it a star!**
