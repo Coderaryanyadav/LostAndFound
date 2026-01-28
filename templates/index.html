@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SBMP | Lost & Found System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="logo">SBMP</div>
+        <div class="subtitle">Lost & Found Portal</div>
+
+        <button class="nav-btn active" data-page="dashboard">🏠 Dashboard</button>
+        <button class="nav-btn" data-page="addLost">📋 Report Lost</button>
+        <button class="nav-btn" data-page="addFound">🔍 Log Found</button>
+        <button class="nav-btn" data-page="inventory">📦 Inventory</button>
+        <button class="nav-btn" id="exportBtn">💾 Export</button>
+
+        <div style="flex: 1;"></div>
+        <div class="subtitle">Aryan Yadav<br>Diploma CS</div>
+    </div>
+
+    <div class="main-content">
+        <!-- Dashboard -->
+        <div id="dashboard" class="page active">
+            <h1>System Dashboard</h1>
+
+            <div class="stats-grid">
+                <div class="stat-card red">
+                    <div class="stat-label">Active Lost</div>
+                    <div class="stat-value" id="lostCount">0</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-label">Found Items</div>
+                    <div class="stat-value" id="foundCount">0</div>
+                </div>
+                <div class="stat-card blue">
+                    <div class="stat-label">Matches</div>
+                    <div class="stat-value" id="matchCount">0</div>
+                </div>
+            </div>
+
+            <h2>Room Matches</h2>
+            <div class="matches-list" id="matchesList">
+                <div class="empty">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Add Lost -->
+        <div id="addLost" class="page">
+            <h1>Report Lost Item</h1>
+            <div class="form-container">
+                <form id="lostForm">
+                    <div class="form-group">
+                        <label>Student Name *</label>
+                        <input type="text" id="lostName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Roll Number *</label>
+                        <input type="text" id="lostRoll" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Item *</label>
+                        <input type="text" id="lostItem" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Room</label>
+                        <input type="text" id="lostRoom">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="lostCategory">
+                            <option>Electronics</option>
+                            <option>Keys</option>
+                            <option>Documents</option>
+                            <option>Bottle</option>
+                            <option>Wallet</option>
+                            <option>Other</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit Report</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Add Found -->
+        <div id="addFound" class="page">
+            <h1>Log Found Item</h1>
+            <div class="form-container">
+                <form id="foundForm">
+                    <div class="form-group">
+                        <label>Finder Name</label>
+                        <input type="text" id="foundName">
+                    </div>
+                    <div class="form-group">
+                        <label>Item *</label>
+                        <input type="text" id="foundItem" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Room</label>
+                        <input type="text" id="foundRoom">
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="foundCategory">
+                            <option>Electronics</option>
+                            <option>Keys</option>
+                            <option>Documents</option>
+                            <option>Bottle</option>
+                            <option>Wallet</option>
+                            <option>Other</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success">Log Item</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Inventory -->
+        <div id="inventory" class="page">
+            <h1>Inventory</h1>
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="Search...">
+                <select id="filterType">
+                    <option value="all">All</option>
+                    <option value="lost">Lost</option>
+                    <option value="found">Found</option>
+                </select>
+            </div>
+            <div class="items-list" id="inventoryList">
+                <div class="empty">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">Status: <span id="status">Ready</span></div>
+
+    <script>
+        // State management
+        let currentPage = 'dashboard';
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function () {
+            // Navigation
+            document.querySelectorAll('.nav-btn[data-page]').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const pageId = this.getAttribute('data-page');
+                    showPage(pageId);
+                });
+            });
+
+            // Export button
+            document.getElementById('exportBtn').addEventListener('click', exportData);
+
+            // Forms
+            document.getElementById('lostForm').addEventListener('submit', submitLost);
+            document.getElementById('foundForm').addEventListener('submit', submitFound);
+
+            // Search/Filter
+            document.getElementById('searchInput').addEventListener('keyup', loadInventory);
+            document.getElementById('filterType').addEventListener('change', loadInventory);
+
+            // Load initial data
+            loadDashboard();
+        });
+
+        // Page Navigation (FIXED - no more event parameter bug)
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-btn[data-page]').forEach(b => b.classList.remove('active'));
+
+            document.getElementById(pageId).classList.add('active');
+            document.querySelector(`[data-page="${pageId}"]`).classList.add('active');
+
+            currentPage = pageId;
+            updateStatus(`Viewing ${pageId}`);
+
+            if (pageId === 'dashboard') loadDashboard();
+            if (pageId === 'inventory') loadInventory();
+        }
+
+        // Update status bar
+        function updateStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        // Load Dashboard (FIXED - added error handling)
+        async function loadDashboard() {
+            try {
+                updateStatus('Loading dashboard...');
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+                document.getElementById('lostCount').textContent = data.lost_count;
+                document.getElementById('foundCount').textContent = data.found_count;
+                document.getElementById('matchCount').textContent = data.match_count;
+
+                const matchesEl = document.getElementById('matchesList');
+                if (data.matches.length === 0) {
+                    matchesEl.innerHTML = '<div class="empty">No room matches found yet</div>';
+                } else {
+                    matchesEl.innerHTML = data.matches.map(m =>
+                        `<div class="match-item">🔔 ${m.name} lost "${m.item}" in Room ${m.room}</div>`
+                    ).join('');
+                }
+
+                updateStatus('Dashboard loaded');
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                updateStatus('Error loading dashboard');
+                alert('Failed to load dashboard: ' + error.message);
+            }
+        }
+
+        // Submit Lost (FIXED - added validation and error handling)
+        async function submitLost(e) {
+            e.preventDefault();
+
+            const data = {
+                name: document.getElementById('lostName').value.trim(),
+                roll: document.getElementById('lostRoll').value.trim(),
+                item: document.getElementById('lostItem').value.trim(),
+                room: document.getElementById('lostRoom').value.trim(),
+                category: document.getElementById('lostCategory').value
+            };
+
+            if (!data.name || !data.item) {
+                alert('Please fill in all required fields');
+                return;
+            }
+
+            try {
+                updateStatus('Saving report...');
+                const res = await fetch('/api/lost', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await res.json();
+
+                if (result.success) {
+                    alert('Report saved successfully!');
+                    document.getElementById('lostForm').reset();
+                    showPage('dashboard');
+                } else {
+                    throw new Error(result.error || 'Failed to save');
+                }
+            } catch (error) {
+                console.error('Error submitting lost item:', error);
+                updateStatus('Error saving report');
+                alert('Failed to save report: ' + error.message);
+            }
+        }
+
+        // Submit Found (FIXED - added validation and error handling)
+        async function submitFound(e) {
+            e.preventDefault();
+
+            const data = {
+                finder: document.getElementById('foundName').value.trim(),
+                item: document.getElementById('foundItem').value.trim(),
+                room: document.getElementById('foundRoom').value.trim(),
+                category: document.getElementById('foundCategory').value
+            };
+
+            if (!data.item) {
+                alert('Please enter the item name');
+                return;
+            }
+
+            try {
+                updateStatus('Logging item...');
+                const res = await fetch('/api/found', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await res.json();
+
+                if (result.success) {
+                    alert('Item logged successfully!');
+                    document.getElementById('foundForm').reset();
+                    showPage('dashboard');
+                } else {
+                    throw new Error(result.error || 'Failed to log');
+                }
+            } catch (error) {
+                console.error('Error submitting found item:', error);
+                updateStatus('Error logging item');
+                alert('Failed to log item: ' + error.message);
+            }
+        }
+
+        // Load Inventory (FIXED - null checks and error handling)
+        async function loadInventory() {
+            try {
+                updateStatus('Loading inventory...');
+                const filter = document.getElementById('filterType').value;
+                const search = document.getElementById('searchInput').value.toLowerCase();
+
+                let items = [];
+
+                if (filter === 'all' || filter === 'lost') {
+                    const res = await fetch('/api/lost');
+                    const lost = await res.json();
+                    if (Array.isArray(lost)) {
+                        items = items.concat(lost.map(i => ({ ...i, type: 'lost' })));
+                    }
+                }
+
+                if (filter === 'all' || filter === 'found') {
+                    const res = await fetch('/api/found');
+                    const found = await res.json();
+                    if (Array.isArray(found)) {
+                        items = items.concat(found.map(i => ({ ...i, type: 'found' })));
+                    }
+                }
+
+                const filtered = items.filter(i => {
+                    const itemMatch = i.item && i.item.toLowerCase().includes(search);
+                    const nameMatch = i.name && i.name.toLowerCase().includes(search);
+                    return itemMatch || nameMatch;
+                });
+
+                const list = document.getElementById('inventoryList');
+
+                if (filtered.length === 0) {
+                    list.innerHTML = '<div class="empty">No items found</div>';
+                    updateStatus('No items found');
+                    return;
+                }
+
+                list.innerHTML = filtered.map(item => `
+                    <div class="item-card">
+                        <div class="item-info">
+                            <div class="item-title" style="color: ${item.type === 'lost' ? '#ef4444' : '#22c55e'}">
+                                ${item.type === 'lost' ? '🔴' : '🟢'} ${item.item || 'N/A'}
+                            </div>
+                            <div class="item-meta">
+                                ${item.type === 'lost' ? (item.name || 'Unknown') : 'by ' + (item.finder || 'Anonymous')} 
+                                | Room: ${item.room || 'N/A'} 
+                                | ${item.date || 'N/A'}
+                            </div>
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn-small btn-success" onclick="resolveItem('${item.type}', ${item.id})">✓</button>
+                            <button class="btn-small btn-danger" onclick="deleteItem('${item.type}', ${item.id})">🗑</button>
+                        </div>
+                    </div>
+                `).join('');
+
+                updateStatus(`Showing ${filtered.length} items`);
+            } catch (error) {
+                console.error('Error loading inventory:', error);
+                document.getElementById('inventoryList').innerHTML = '<div class="empty">Error loading items</div>';
+                updateStatus('Error loading inventory');
+            }
+        }
+
+        // Resolve Item (FIXED - added error handling)
+        async function resolveItem(type, id) {
+            try {
+                updateStatus('Resolving item...');
+                const res = await fetch(`/api/item/${type}/${id}`, { method: 'PUT' });
+                const result = await res.json();
+
+                if (result.success) {
+                    await loadInventory();
+                    await loadDashboard();
+                    updateStatus('Item resolved');
+                } else {
+                    throw new Error(result.error || 'Failed to resolve');
+                }
+            } catch (error) {
+                console.error('Error resolving item:', error);
+                updateStatus('Error resolving item');
+                alert('Failed to resolve item: ' + error.message);
+            }
+        }
+
+        // Delete Item (FIXED - added confirmation and error handling)
+        async function deleteItem(type, id) {
+            if (!confirm('Are you sure you want to delete this item permanently?')) {
+                return;
+            }
+
+            try {
+                updateStatus('Deleting item...');
+                const res = await fetch(`/api/item/${type}/${id}`, { method: 'DELETE' });
+                const result = await res.json();
+
+                if (result.success) {
+                    await loadInventory();
+                    await loadDashboard();
+                    updateStatus('Item deleted');
+                } else {
+                    throw new Error(result.error || 'Failed to delete');
+                }
+            } catch (error) {
+                console.error('Error deleting item:', error);
+                updateStatus('Error deleting item');
+                alert('Failed to delete item: ' + error.message);
+            }
+        }
+
+        // Export Data (FIXED - proper CSV download)
+        function exportData() {
+            updateStatus('Exporting data...');
+            window.location.href = '/api/export';
+            setTimeout(() => updateStatus('Data exported'), 1000);
+        }
+    </script>
+</body>
+
+</html>
