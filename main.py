@@ -1,425 +1,865 @@
-# main.py
-# SBMP College Lost and Found System
-# Made by: Aryan Yadav
-# Diploma Computer Science Project
+"""
+SBMP College Lost & Found Management System
+Author: Aryan Yadav
+Institution: SBMP College
 
-import tkinter as tk
-from tkinter import messagebox, filedialog, ttk
-import sqlite3
-import csv
+Desktop GUI application featuring student self-registration,
+admin management, live item matching, and audit logging.
+"""
+
 import os
+import sqlite3
+import tkinter as tk
 from datetime import datetime
-from typing import List, Tuple, Optional
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from tkinter import messagebox, ttk
 
-# ==========================================
-# 🎨 CONSTANTS & CONFIGURATION
-# ==========================================
-DB_NAME = "college_data.db"
-WINDOW_SIZE = "1100x800"
+# ─── Custom Exceptions ────────────────────────────────────────────────────────
+class InputError(Exception):
+    """Custom exception for form validation errors."""
+    pass
 
-# Theme Colors 
-BG_DARK = "#121212"
-BG_CARD = "#1e1e1e"
-BG_INPUT = "#2d2d2d"
-TEXT_WHITE = "#ffffff"
-TEXT_GRAY = "#a0a0a0"
-ACCENT_BLUE = "#3b82f6"
-ACCENT_GREEN = "#22c55e"
-ACCENT_RED = "#ef4444"
-ACCENT_PURPLE = "#a855f7"
-BORDER_COLOR = "#333333"
 
-# ==========================================
-# 📊 DATABASE SETUP
-# ==========================================
+# ─── Database Configuration ───────────────────────────────────────────────────
+DB_FILE = "lost_found.db"
+conn = None
+cursor = None
 
-def setup_database() -> None:
-    """Initializes the SQLite database and creates necessary tables."""
+
+def setup_database():
+    """Initializes tables for students, lost items, found items, and matches."""
+    global conn, cursor
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS students(
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        department TEXT NOT NULL,
+        semester   INTEGER NOT NULL,
+        username   TEXT UNIQUE NOT NULL,
+        password   TEXT NOT NULL
+    )""")
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS lost_items(
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER,
+        item_name  TEXT NOT NULL,
+        color      TEXT NOT NULL,
+        location   TEXT NOT NULL,
+        status     TEXT DEFAULT 'Searching',
+        date       TEXT
+    )""")
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS found_items(
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        watchman_name TEXT NOT NULL,
+        item_name     TEXT NOT NULL,
+        color         TEXT NOT NULL,
+        location      TEXT NOT NULL,
+        status        TEXT DEFAULT 'Found',
+        date          TEXT
+    )""")
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS matches(
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        lost_id  INTEGER,
+        found_id INTEGER,
+        verified TEXT DEFAULT 'Yes',
+        date     TEXT
+    )""")
+
+    conn.commit()
+
+
+# ─── Audit Action Logging ─────────────────────────────────────────────────────
+def log_action(text: str):
+    """Logs system events with an accurate timestamp."""
     try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        
-        # LOST ITEMS TABLE
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS lost_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_name TEXT NOT NULL,
-                roll_no TEXT NOT NULL,
-                item_name TEXT NOT NULL,
-                room_no TEXT,
-                date TEXT,
-                category TEXT DEFAULT 'Other',
-                status TEXT DEFAULT 'Pending'
-            )
-        """)
-        
-        # FOUND ITEMS TABLE
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS found_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                finder_name TEXT,
-                item_name TEXT NOT NULL,
-                room_no TEXT,
-                date TEXT,
-                category TEXT DEFAULT 'Other',
-                status TEXT DEFAULT 'Available'
-            )
-        """)
-        
-        conn.commit()
-        conn.close()
-    except sqlite3.Error as e:
-        print(f"Database Error: {e}")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open("log.txt", "a", encoding="utf-8") as f:
+            f.write(f"[{ts}] {text}\n")
+    except Exception as e:
+        print(f"Logging error: {e}")
 
-# ==========================================
-# 🖥️ MAIN APPLICATION
-# ==========================================
 
-class LostFoundApp:
+# ─── Design Tokens & Theme Colors ─────────────────────────────────────────────
+BG       = "#0F1117"  # Dark primary background
+CARD     = "#1A1D2E"  # Elevated card surface
+ACCENT   = "#6C63FF"  # Indigo accent
+ACCENT2  = "#FF6584"  # Rose accent (Lost/Alerts)
+SUCCESS  = "#43D9AD"  # Teal green (Found/Verified)
+TEXT     = "#E8EAF6"  # Main text
+SUBTEXT  = "#8B8FA8"  # Dimmed subtitle text
+BORDER   = "#2D2F45"  # Subtle borders
+ENTRY_BG = "#252840"  # Input field background
+HOVER_BG = "#7C74FF"  # Button hover state
+
+FONT_TITLE = ("Helvetica Neue", 20, "bold")
+FONT_CARD  = ("Helvetica Neue", 13, "bold")
+FONT_BODY  = ("Helvetica Neue", 11)
+FONT_SMALL = ("Helvetica Neue", 9)
+FONT_MONO  = ("Courier New", 10)
+
+
+# ─── Widget Builders ──────────────────────────────────────────────────────────
+def styled_window(parent, title: str, w: int, h: int):
+    """Spawns a centered dark-themed secondary dialog window."""
+    win = tk.Toplevel(parent)
+    win.title(title)
+    win.geometry(f"{w}x{h}")
+    win.configure(bg=BG)
+    win.resizable(False, False)
+    win.update_idletasks()
+    x = (win.winfo_screenwidth() - w) // 2
+    y = (win.winfo_screenheight() - h) // 2
+    win.geometry(f"{w}x{h}+{x}+{y}")
+    return win
+
+
+def card_frame(parent, **kwargs):
+    """Creates a stylized elevated frame container."""
+    return tk.Frame(
+        parent,
+        bg=CARD,
+        bd=0,
+        highlightthickness=1,
+        highlightbackground=BORDER,
+        **kwargs
+    )
+
+
+def form_label(parent, text: str):
+    return tk.Label(parent, text=text, font=FONT_BODY, fg=SUBTEXT, bg=CARD, anchor="w")
+
+
+def sub_label(parent, text: str, color=SUBTEXT):
+    return tk.Label(parent, text=text, font=FONT_SMALL, fg=color, bg=CARD)
+
+
+def styled_entry(parent, show=None):
+    e = tk.Entry(
+        parent,
+        font=FONT_BODY,
+        bg=ENTRY_BG,
+        fg=TEXT,
+        insertbackground=TEXT,
+        relief=tk.FLAT,
+        highlightthickness=1,
+        highlightbackground=BORDER,
+        highlightcolor=ACCENT,
+        bd=4
+    )
+    if show:
+        e.config(show=show)
+    return e
+
+
+def accent_button(parent, text: str, command, color=ACCENT, width=None):
+    cfg = dict(
+        text=text,
+        command=command,
+        font=FONT_BODY,
+        bg=color,
+        fg="white",
+        activebackground=HOVER_BG,
+        activeforeground="white",
+        cursor="hand2",
+        relief=tk.FLAT,
+        bd=0,
+        padx=14,
+        pady=7
+    )
+    if width:
+        cfg["width"] = width
+    btn = tk.Button(parent, **cfg)
+    btn.bind("<Enter>", lambda _: btn.config(bg=HOVER_BG))
+    btn.bind("<Leave>", lambda _: btn.config(bg=color))
+    return btn
+
+
+def ghost_button(parent, text: str, command, width=None):
+    cfg = dict(
+        text=text,
+        command=command,
+        font=FONT_BODY,
+        bg=CARD,
+        fg=ACCENT,
+        activebackground=ENTRY_BG,
+        activeforeground=ACCENT,
+        cursor="hand2",
+        relief=tk.FLAT,
+        bd=0,
+        padx=14,
+        pady=7,
+        highlightthickness=1,
+        highlightbackground=ACCENT
+    )
+    if width:
+        cfg["width"] = width
+    return tk.Button(parent, **cfg)
+
+
+def styled_listbox(parent):
+    frame = tk.Frame(parent, bg=CARD, highlightthickness=1, highlightbackground=BORDER)
+    sb = tk.Scrollbar(frame, orient=tk.VERTICAL, bg=BORDER, troughcolor=CARD)
+    lb = tk.Listbox(
+        frame,
+        font=FONT_MONO,
+        bg=ENTRY_BG,
+        fg=TEXT,
+        selectbackground=ACCENT,
+        selectforeground="white",
+        activestyle="none",
+        relief=tk.FLAT,
+        bd=0,
+        yscrollcommand=sb.set
+    )
+    sb.config(command=lb.yview)
+    sb.pack(side=tk.RIGHT, fill=tk.Y)
+    lb.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    return frame, lb
+
+
+def divider(parent):
+    return tk.Frame(parent, bg=BORDER, height=1)
+
+
+# ─── Matching Algorithm Helper ────────────────────────────────────────────────
+def is_match(item1: str, color1: str, loc1: str, item2: str, color2: str, loc2: str) -> bool:
+    """Smart matching: case-insensitive with keyword, token overlap, and substring tolerance."""
+    i1, i2 = item1.strip().lower(), item2.strip().lower()
+    c1, c2 = color1.strip().lower(), color2.strip().lower()
+    l1, l2 = loc1.strip().lower(), loc2.strip().lower()
+
+    tokens1 = set(w for w in i1.split() if len(w) >= 3)
+    tokens2 = set(w for w in i2.split() if len(w) >= 3)
+    token_overlap = bool(tokens1 & tokens2)
+
+    item_match = (i1 == i2) or (i1 in i2) or (i2 in i1) or token_overlap
+    color_match = (c1 == c2) or (not c1 or not c2) or (c1 in c2) or (c2 in c1)
+    loc_match = (l1 == l2) or (l1 in l2) or (l2 in l1)
+
+    return item_match and (color_match or loc_match)
+
+
+def auto_match(item: str, color: str, loc: str, reporting_type: str = "found"):
+    """Scans and alerts if a counterpart report already exists."""
+    try:
+        if reporting_type == "found":
+            cursor.execute("SELECT id, item_name, color, location FROM lost_items WHERE status='Searching'")
+            rows = cursor.fetchall()
+            counterpart = "Lost"
+        else:
+            cursor.execute("SELECT id, item_name, color, location FROM found_items WHERE status='Found'")
+            rows = cursor.fetchall()
+            counterpart = "Found"
+
+        for r in rows:
+            if is_match(item, color, loc, r[1], r[2], r[3]):
+                messagebox.showinfo(
+                    "🔗 Potential Match Detected!",
+                    f"A corresponding {counterpart} report exists:\n\n"
+                    f"  Item    : {r[1]}\n"
+                    f"  Color   : {r[2]}\n"
+                    f"  Location: {r[3]}\n\n"
+                    "Admins can review and verify this under 'Check Matches'."
+                )
+                break
+    except Exception as e:
+        print(f"Auto-match check error: {e}")
+
+
+# ─── Main Application Window ──────────────────────────────────────────────────
+class LostFoundCampusApp:
     def __init__(self, root: tk.Tk):
-        """Initializes the main application window and layout."""
         self.root = root
-        self.root.title("SBMP | Assets & Recovery System")
-        self.root.geometry(WINDOW_SIZE)
-        self.root.configure(bg=BG_DARK)
-        
-        setup_database()
+        self.root.title("Lost & Found — Campus Recovery System")
+        self.root.geometry("540x440")
+        self.root.configure(bg=BG)
+        self.root.resizable(False, False)
 
-        # Handle Window Close (Low Fix #102)
+        # Center on screen
+        self.root.update_idletasks()
+        sx = (self.root.winfo_screenwidth() - 540) // 2
+        sy = (self.root.winfo_screenheight() - 440) // 2
+        self.root.geometry(f"540x440+{sx}+{sy}")
+
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
-        # UI Sidebar
-        sidebar = tk.Frame(self.root, bg=BG_CARD, width=220)
-        sidebar.pack(side="left", fill="y")
-        sidebar.pack_propagate(False)
-        
-        tk.Label(sidebar, text="SBMP", font=("Arial", 22, "bold"), bg=BG_CARD, fg=ACCENT_BLUE).pack(pady=(40, 5))
-        tk.Label(sidebar, text="Portal Management", font=("Arial", 10), bg=BG_CARD, fg=TEXT_GRAY).pack(pady=(0, 40))
-        
-        # Navigation Menu
-        self.add_nav_btn(sidebar, "🏠 Dashboard", self.show_dashboard, "View system overview")
-        self.add_nav_btn(sidebar, "📋 Add Lost", self.show_add_lost, "Report a lost item")
-        self.add_nav_btn(sidebar, "🔍 Add Found", self.show_add_found, "Log a recovered item")
-        self.add_nav_btn(sidebar, "📦 Inventory", self.show_all_items, "View all records")
-        self.add_nav_btn(sidebar, "📊 Analytics", self.show_analytics, "View statistical graphs")
-        self.add_nav_btn(sidebar, "💾 Export", self.export_data, "Backup data to CSV")
-        self.add_nav_btn(sidebar, "ℹ️ About", self.show_about, "Project info") # Low Fix #66
-        self.add_nav_btn(sidebar, "❓ Help", self.show_help, "User guide")     # Low Fix #67
-        
-        tk.Label(sidebar, text="v2.6 Stable Build", font=("Arial", 8), bg=BG_CARD, fg=BORDER_COLOR).pack(side="bottom", pady=20)
-        
-        # Status Bar (Low Fix #69)
-        self.status_bar = tk.Label(self.root, text="System Ready", bd=1, relief="sunken", anchor="w", bg=BG_CARD, fg=TEXT_GRAY, font=("Arial", 9))
-        self.status_bar.pack(side="bottom", fill="x")
 
-        # Main Content
-        self.content = tk.Frame(self.root, bg=BG_DARK)
-        self.content.pack(side="left", fill="both", expand=True, padx=25, pady=25)
-        
-        self.show_dashboard()
+        try:
+            setup_database()
+        except Exception as e:
+            messagebox.showerror("Database Error", f"Failed to initialize database:\n{e}")
+
+        self.build_landing_view()
 
     def on_closing(self):
-        """LOW FIX #102: Confirmation on closing."""
-        if messagebox.askokcancel("Quit", "Do you want to quit the application?"):
-            self.root.destroy()
+        """Clean shutdown handler closing the database connection."""
+        global conn
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+        self.root.destroy()
 
-    def update_status(self, msg: str):
-        """Updates the status bar message."""
-        self.status_bar.config(text=f" Status: {msg}")
+    def build_landing_view(self):
+        card = card_frame(self.root)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=480, height=380)
 
-    def add_nav_btn(self, parent: tk.Frame, text: str, command: callable, tooltip: str = "") -> None:
-        """Helper to create menu buttons with hover effects."""
-        btn = tk.Button(parent, text=text, font=("Arial", 11, "bold"), bg=BG_CARD, fg=TEXT_WHITE,
-                       activebackground=BG_INPUT, activeforeground=ACCENT_BLUE, bd=0, 
-                       padx=20, pady=12, anchor="w", cursor="hand2", command=command)
-        btn.pack(fill="x")
-        btn.bind("<Enter>", lambda e: [btn.config(bg=BG_INPUT), self.update_status(tooltip)])
-        btn.bind("<Leave>", lambda e: [btn.config(bg=BG_CARD), self.update_status("System Ready")])
-    
-    def clear_ui(self) -> None:
-        """Clears the main content area for new page load."""
-        for widget in self.content.winfo_children():
-            widget.destroy()
+        strip = tk.Frame(card, bg=ACCENT, height=4)
+        strip.pack(fill=tk.X)
 
-    # ==========================================
-    # PAGE: DASHBOARD
-    # ==========================================
-    def show_dashboard(self) -> None:
-        self.clear_ui()
-        tk.Label(self.content, text="OVERVIEW DASHBOARD", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=(0, 20), anchor="w")
-        
-        stats_frame = tk.Frame(self.content, bg=BG_DARK)
-        stats_frame.pack(fill="x")
-        
-        conn = sqlite3.connect(DB_NAME)
-        lost_c = conn.execute("SELECT COUNT(*) FROM lost_items WHERE status='Pending'").fetchone()[0]
-        found_c = conn.execute("SELECT COUNT(*) FROM found_items WHERE status='Available'").fetchone()[0]
-        conn.close()
-        
-        self.draw_card(stats_frame, "ACTIVE LOSSES", lost_c, ACCENT_RED)
-        self.draw_card(stats_frame, "ITEMS RECOVERED", found_c, ACCENT_GREEN)
-        self.draw_card(stats_frame, "STATUS", "STABLE", ACCENT_BLUE)
+        inner = tk.Frame(card, bg=CARD)
+        inner.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
 
-        # Room Match Logic
-        tk.Label(self.content, text="Room-Match Suggestions", font=("Arial", 14, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=(40, 10), anchor="w")
-        
-        list_f = tk.Frame(self.content, bg=BG_CARD, bd=1, relief="solid", highlightbackground=BORDER_COLOR)
-        list_f.pack(fill="both", expand=True)
-        
-        lb = tk.Listbox(list_f, bg=BG_CARD, fg=TEXT_WHITE, font=("Arial", 11), bd=0, highlightthickness=0)
-        lb.pack(fill="both", expand=True, padx=10, pady=10)
-        
-        conn = sqlite3.connect(DB_NAME)
-        matches = conn.execute("""
-            SELECT l.student_name, l.item_name, l.room_no 
-            FROM lost_items l JOIN found_items f ON l.room_no = f.room_no 
-            WHERE l.status='Pending' AND f.status='Available' AND l.room_no != ''
-        """).fetchall()
-        conn.close()
-        
-        if not matches:
-            lb.insert(tk.END, " No potential room overlaps found.")
-        else:
-            for m in matches:
-                lb.insert(tk.END, f" 🔔 {m[0]} lost '{m[1]}' - Item match in Room {m[2]}")
+        logo_row = tk.Frame(inner, bg=CARD)
+        logo_row.pack(pady=(6, 0))
+        tk.Label(logo_row, text="🔍", font=("Helvetica Neue", 26), bg=CARD, fg=ACCENT).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(logo_row, text="Lost & Found", font=FONT_TITLE, fg=TEXT, bg=CARD).pack(side=tk.LEFT)
 
-    def draw_card(self, parent: tk.Frame, title: str, val: any, color: str) -> None:
-        c = tk.Frame(parent, bg=BG_CARD, padx=30, pady=25, bd=1, relief="solid", highlightbackground=BORDER_COLOR)
-        c.pack(side="left", expand=True, fill="both", padx=10)
-        tk.Label(c, text=title, font=("Arial", 10, "bold"), bg=BG_CARD, fg=TEXT_GRAY).pack()
-        tk.Label(c, text=str(val), font=("Arial", 28, "bold"), bg=BG_CARD, fg=color).pack(pady=5)
+        tk.Label(inner, text="SBMP College Campus Recovery Portal", font=FONT_SMALL, fg=SUBTEXT, bg=CARD).pack(pady=(2, 16))
+        divider(inner).pack(fill=tk.X, pady=(0, 16))
 
-    # ==========================================
-    # PAGE: ADD LOST / FOUND
-    # ==========================================
-    def show_add_lost(self) -> None:
-        self.clear_ui()
-        tk.Label(self.content, text="REPORT NEW LOSS", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=10, anchor="w")
-        
-        f = tk.Frame(self.content, bg=BG_CARD, padx=40, pady=40, bd=1, relief="solid", highlightbackground=BORDER_COLOR)
-        f.pack(pady=20)
-        
-        self.l_name = self.add_entry(f, "Student Name*", 0)
-        self.l_roll = self.add_entry(f, "Roll Number*", 1)
-        self.l_item = self.add_entry(f, "Item Lost*", 2)
-        self.l_room = self.add_entry(f, "Room No", 3)
-        
-        tk.Label(f, text="Category:", bg=BG_CARD, fg=TEXT_WHITE).grid(row=4, column=0, sticky="w", pady=10)
-        self.l_cat = ttk.Combobox(f, values=["Electronics", "Keys", "Documents", "Bottle", "Wallet", "Other"])
-        self.l_cat.set("Other"); self.l_cat.grid(row=4, column=1, padx=10, pady=10)
-        
-        tk.Button(self.content, text="COMMIT TO RECORD", bg=ACCENT_BLUE, fg="white", font=("Arial", 12, "bold"), 
-                  padx=40, pady=12, bd=0, command=self.save_lost).pack(pady=20)
+        tk.Label(inner, text="Select Portal Login", font=FONT_BODY, fg=TEXT, bg=CARD).pack(pady=(0, 12))
 
-    def add_entry(self, parent: tk.Frame, label: str, row: int) -> tk.Entry:
-        tk.Label(parent, text=label+":", bg=BG_CARD, fg=TEXT_WHITE).grid(row=row, column=0, sticky="w", pady=10)
-        e = tk.Entry(parent, width=35, bg=BG_INPUT, fg=TEXT_WHITE, insertbackground="white", bd=0, highlightthickness=1)
-        e.grid(row=row, column=1, padx=10, pady=10); return e
+        btn_row = tk.Frame(inner, bg=CARD)
+        btn_row.pack(pady=4)
 
-    def save_lost(self) -> None:
-        n, r, i, rm, cat = self.l_name.get(), self.l_roll.get(), self.l_item.get(), self.l_room.get(), self.l_cat.get()
-        if not n or not i:
-            messagebox.showerror("Error", "Required fields (*) are missing!")
-            return
-        
-        conn = sqlite3.connect(DB_NAME)
-        conn.execute("INSERT INTO lost_items (student_name, roll_no, item_name, room_no, date, category) VALUES (?,?,?,?,?,?)",
-                    (n, r, i, rm, datetime.now().strftime("%Y-%m-%d"), cat))
-        conn.commit(); conn.close()
-        messagebox.showinfo("Success", "Incident Logged."); self.show_dashboard()
+        accent_button(btn_row, "🔐  Admin Login", self.open_admin_login, color=ACCENT, width=17).pack(side=tk.LEFT, padx=6)
+        accent_button(btn_row, "🎓  Student Login", self.open_student_login, color=ACCENT2, width=17).pack(side=tk.LEFT, padx=6)
 
-    def show_add_found(self) -> None:
-        self.clear_ui()
-        tk.Label(self.content, text="LOG ASSET RECOVERY", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=10, anchor="w")
-        f = tk.Frame(self.content, bg=BG_CARD, padx=40, pady=40, bd=1, relief="solid")
-        f.pack(pady=20)
-        
-        self.f_name = self.add_entry(f, "Finder Name", 0)
-        self.f_item = self.add_entry(f, "Item Name*", 1)
-        self.f_room = self.add_entry(f, "Room Found", 2)
-        
-        tk.Label(f, text="Category:", bg=BG_CARD, fg=TEXT_WHITE).grid(row=3, column=0, sticky="w", pady=10)
-        self.f_cat = ttk.Combobox(f, values=["Electronics", "Keys", "Documents", "Bottle", "Wallet", "Other"])
-        self.f_cat.set("Other"); self.f_cat.grid(row=3, column=1, padx=10, pady=10)
-        
-        tk.Button(self.content, text="LOG TO VAULT", bg=ACCENT_GREEN, fg="white", font=("Arial", 12, "bold"), 
-                  padx=40, pady=12, bd=0, command=self.save_found).pack(pady=20)
+        ghost_button(inner, "✨  New Student? Register Here", self.open_student_registration, width=32).pack(pady=(16, 0))
 
-    def save_found(self) -> None:
-        n, i, rm, cat = self.f_name.get(), self.f_item.get(), self.f_room.get(), self.f_cat.get()
-        if not i: messagebox.showerror("Error", "Item name is needed."); return
-        conn = sqlite3.connect(DB_NAME)
-        conn.execute("INSERT INTO found_items (finder_name, item_name, room_no, date, category) VALUES (?,?,?,?,?)",
-                    (n, i, rm, datetime.now().strftime("%Y-%m-%d"), cat))
-        conn.commit(); conn.close()
-        messagebox.showinfo("Logged", "Record Added."); self.show_dashboard()
+        tk.Label(inner, text="Default Admin: admin / admin", font=FONT_SMALL, fg=BORDER, bg=CARD).pack(side=tk.BOTTOM, pady=(12, 0))
 
-    # ==========================================
-    # PAGE: INVENTORY & EDIT
-    # ==========================================
-    def show_all_items(self) -> None:
-        self.clear_ui()
-        tk.Label(self.content, text="SYSTEM INVENTORY", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=10, anchor="w")
-        
-        top = tk.Frame(self.content, bg=BG_DARK)
-        top.pack(fill="x", pady=10)
-        
-        self.search_in = tk.Entry(top, bg=BG_INPUT, fg=TEXT_WHITE, width=35, bd=0)
-        self.search_in.pack(side="left", pady=10)
-        tk.Button(top, text="🔍 Refresh", bg=ACCENT_BLUE, fg="white", command=self.refresh_list).pack(side="left", padx=10)
-        
-        tk.Label(top, text="Filter:", bg=BG_DARK, fg=TEXT_GRAY).pack(side="left", padx=(20, 5))
-        self.filter_val = ttk.Combobox(top, values=["All", "Lost", "Found"], width=10)
-        self.filter_val.set("All"); self.filter_val.pack(side="left")
-        
-        # Low Fix #77: Count Label
-        self.count_label = tk.Label(top, text="", bg=BG_DARK, fg=ACCENT_GREEN, font=("Arial", 10, "bold"))
-        self.count_label.pack(side="right")
+    # ─── Admin Flow ───────────────────────────────────────────────────────────
+    def open_admin_login(self):
+        w = styled_window(self.root, "Admin Authentication", 360, 320)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=320, height=280)
 
-        f = tk.Frame(self.content, bg=BG_CARD)
-        f.pack(fill="both", expand=True)
-        
-        self.lb = tk.Listbox(f, bg=BG_INPUT, fg=TEXT_WHITE, font=("Arial", 11), bd=0, selectbackground=ACCENT_BLUE)
-        self.lb.pack(fill="both", expand=True, padx=5, pady=5)
-        self.lb.bind("<Double-Button-1>", self.open_manager)
-        
-        self.refresh_list()
+        tk.Frame(card, bg=ACCENT, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=28, pady=18)
 
-    def refresh_list(self) -> None:
-        self.lb.delete(0, tk.END)
-        self.lb_map = {}
-        q = f"%{self.search_in.get()}%"
-        flt = self.filter_val.get()
-        conn = sqlite3.connect(DB_NAME)
-        
-        total_items = 0
-        
-        if flt in ["All", "Lost"]:
-            lost = conn.execute("SELECT * FROM lost_items WHERE item_name LIKE ? OR student_name LIKE ?", (q, q)).fetchall()
-            for r in lost:
-                # Low Fix #76 & #80: Formatting Date and showing ID
-                date_obj = datetime.strptime(r[5], "%Y-%m-%d")
-                friendly_date = date_obj.strftime("%d %b %Y")
-                self.lb.insert(tk.END, f" #{r[0]} | [Lost] {r[3]} - {r[1]} | {friendly_date}")
-                self.lb_map[self.lb.size()-1] = ("lost", r[0])
-                self.lb.itemconfig(tk.END, fg=ACCENT_RED) # Low Fix #81: Visual distinction
-                total_items += 1
-        
-        if flt in ["All", "Found"]:
-            found = conn.execute("SELECT * FROM found_items WHERE item_name LIKE ?", (q,)).fetchall()
-            for r in found:
-                date_obj = datetime.strptime(r[4], "%Y-%m-%d")
-                friendly_date = date_obj.strftime("%d %b %Y")
-                self.lb.insert(tk.END, f" #{r[0]} | [Found] {r[2]} - by {r[1]} | {friendly_date}")
-                self.lb_map[self.lb.size()-1] = ("found", r[0])
-                self.lb.itemconfig(tk.END, fg=ACCENT_GREEN) # Low Fix #81: Visual distinction
-                total_items += 1
-        conn.close()
-        self.count_label.config(text=f"Total: {total_items} items")
+        tk.Label(f, text="🔐  Admin Portal", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 14))
 
-    def open_manager(self, event) -> None:
-        idx = self.lb.curselection()
-        if not idx or idx[0] not in self.lb_map: return
-        tab, rid = self.lb_map[idx[0]]
-        
-        pop = tk.Toplevel(self.root)
-        pop.title("Edit Record")
-        pop.geometry("400x300"); pop.configure(bg=BG_CARD)
-        
-        tk.Label(pop, text="MODIFY RECORD", font=("Arial", 12, "bold"), bg=BG_CARD, fg=ACCENT_BLUE).pack(pady=20)
-        
-        def resolve():
-            conn = sqlite3.connect(DB_NAME)
-            st = "Resolved" if tab == "lost" else "Claimed"
-            conn.execute(f"UPDATE {tab}_items SET status=? WHERE id=?", (st, rid))
-            conn.commit(); conn.close(); pop.destroy(); self.refresh_list()
-            
-        def delete():
-            if messagebox.askyesno("Delete", "Delete record forever?"):
-                conn = sqlite3.connect(DB_NAME)
-                conn.execute(f"DELETE FROM {tab}_items WHERE id=?", (rid,))
-                conn.commit(); conn.close(); pop.destroy(); self.refresh_list()
+        form_label(f, "Username").pack(anchor="w")
+        e_user = styled_entry(f)
+        e_user.pack(fill=tk.X, pady=(2, 10))
+        e_user.focus_set()
 
-        tk.Button(pop, text="✅ Resolve / Mark Claimed", bg=ACCENT_GREEN, width=25, command=resolve).pack(pady=10)
-        tk.Button(pop, text="🗑️ Delete Permanently", bg=ACCENT_RED, width=25, command=delete).pack(pady=10)
+        form_label(f, "Password").pack(anchor="w")
+        e_pass = styled_entry(f, show="•")
+        e_pass.pack(fill=tk.X, pady=(2, 16))
 
-    # ==========================================
-    # PAGE: ANALYTICS
-    # ==========================================
-    def show_analytics(self) -> None:
-        self.clear_ui()
-        tk.Label(self.content, text="CAMPUS ANALYTICS", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=10, anchor="w")
-        
-        conn = sqlite3.connect(DB_NAME)
-        data = conn.execute("SELECT category, COUNT(*) FROM lost_items GROUP BY category").fetchall()
-        conn.close()
-        
-        if not data:
-            tk.Label(self.content, text="No analytical data found.", bg=BG_DARK, fg=TEXT_GRAY).pack(pady=100)
-            return
+        def try_login():
+            un = e_user.get().strip()
+            pw = e_pass.get().strip()
+            if not un or not pw:
+                messagebox.showwarning("Warning", "Please enter both username and password.", parent=w)
+                return
+            if un == "admin" and pw == "admin":
+                log_action("Admin logged in successfully")
+                w.destroy()
+                self.open_admin_panel()
+            else:
+                messagebox.showerror("Access Denied", "Invalid admin credentials.", parent=w)
 
-        cats = [x[0] for x in data]; cnts = [x[1] for x in data]
-        plt.style.use('dark_background')
-        fig, ax = plt.subplots(figsize=(6, 5))
-        fig.patch.set_facecolor(BG_DARK)
-        ax.pie(cnts, labels=cats, autopct='%1.1f%%', colors=[ACCENT_BLUE, ACCENT_GREEN, ACCENT_RED, ACCENT_PURPLE, "orange"])
-        ax.set_title("Lost Items by Category", color=TEXT_WHITE)
-        
-        canv = FigureCanvasTkAgg(fig, master=self.content)
-        canv.draw(); canv.get_tk_widget().pack(pady=20)
+        e_pass.bind("<Return>", lambda _: try_login())
+        accent_button(f, "Sign In", try_login).pack(fill=tk.X)
 
-    def export_data(self) -> None:
-        path = filedialog.asksaveasfilename(defaultextension=".csv")
-        if not path: return
-        conn = sqlite3.connect(DB_NAME)
-        data = conn.execute("SELECT * FROM lost_items").fetchall()
-        with open(path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["ID", "Name", "Roll", "Item", "Room", "Date", "Category", "Status"])
-            writer.writerows(data)
-        conn.close()
-        messagebox.showinfo("Success", "Backup generated.")
+    def open_admin_panel(self):
+        w = styled_window(self.root, "Admin Dashboard", 420, 450)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=380, height=410)
 
-    # ==========================================
-    # LOW FIXES: INFO PAGES
-    # ==========================================
-    def show_about(self) -> None:
-        """Low Fix #66: About Page."""
-        self.clear_ui()
-        tk.Label(self.content, text="ABOUT PROJECT", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=10, anchor="w")
-        info = (
-            "SBMP Lost & Found System v2.6\n\n"
-            "Developed by: Aryan Yadav\n"
-            "Diploma Computer Science Project\n\n"
-            "Features:\n"
-            "- SQLite Database Persistence\n"
-            "- Room Matching Algorithm\n"
-            "- Category Classification\n"
-            "- Data Analytics & Visualization\n"
-            "- CSV Export Module"
-        )
-        tk.Label(self.content, text=info, font=("Arial", 12), bg=BG_DARK, fg=TEXT_WHITE, justify="left").pack(pady=20, anchor="w")
+        tk.Frame(card, bg=ACCENT, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=30, pady=18)
 
-    def show_help(self) -> None:
-        """Low Fix #67: Help Page."""
-        self.clear_ui()
-        tk.Label(self.content, text="USER GUIDE / HELP", font=("Arial", 20, "bold"), bg=BG_DARK, fg=TEXT_WHITE).pack(pady=10, anchor="w")
-        guide = (
-           "1. Dashboard: Overview of active reports.\n"
-           "2. Add Lost: Fill details to report something you lost.\n"
-           "3. Add Found: Fill details if you found an item on campus.\n"
-           "4. Inventory: Search and double-click entries to resolve or delete them.\n"
-           "5. Analytics: View graphs of lost items.\n"
-           "6. Export: Save database as CSV for offline records.\n\n"
-           "Tip: Double-click an item in Inventory to mark it as found!"
-        )
-        tk.Frame(self.content, bg=BG_CARD, padx=20, pady=20).pack(fill="x", pady=10)
-        tk.Label(self.content, text=guide, font=("Arial", 11), bg=BG_DARK, fg=TEXT_GRAY, justify="left").pack(pady=10, anchor="w")
+        tk.Label(f, text="⚙️  Admin Management", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 2))
+        sub_label(f, "Control center for records and matches").pack(pady=(0, 14))
+        divider(f).pack(fill=tk.X, pady=(0, 14))
 
-# RUN
+        actions = [
+            ("👤  Register New Student", ACCENT, self.open_student_registration),
+            ("📦  Report Found Item", SUCCESS, self.open_add_found),
+            ("🔴  View Lost Items", ACCENT2, self.open_show_lost),
+            ("🟢  View Found Items", SUCCESS, self.open_show_found),
+            ("🔗  Check & Verify Matches", ACCENT, self.open_show_matches),
+        ]
+        for label, color, cmd in actions:
+            accent_button(f, label, cmd, color=color).pack(fill=tk.X, pady=4)
+
+    # ─── Student Flow ─────────────────────────────────────────────────────────
+    def open_student_login(self):
+        w = styled_window(self.root, "Student Authentication", 360, 350)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=320, height=310)
+
+        tk.Frame(card, bg=ACCENT2, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=28, pady=18)
+
+        tk.Label(f, text="🎓  Student Portal", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 14))
+
+        form_label(f, "Username").pack(anchor="w")
+        e_user = styled_entry(f)
+        e_user.pack(fill=tk.X, pady=(2, 10))
+        e_user.focus_set()
+
+        form_label(f, "Password").pack(anchor="w")
+        e_pass = styled_entry(f, show="•")
+        e_pass.pack(fill=tk.X, pady=(2, 14))
+
+        def try_login():
+            un = e_user.get().strip()
+            pw = e_pass.get().strip()
+            if not un or not pw:
+                messagebox.showwarning("Warning", "Please enter both fields.", parent=w)
+                return
+            try:
+                cursor.execute("SELECT * FROM students WHERE username=? AND password=?", (un, pw))
+                row = cursor.fetchone()
+                if row:
+                    log_action(f"Student login: {row[1]} ({row[4]})")
+                    w.destroy()
+                    self.open_student_panel(row)
+                else:
+                    messagebox.showerror("Error", "Invalid username or password.", parent=w)
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        e_pass.bind("<Return>", lambda _: try_login())
+        accent_button(f, "Sign In", try_login, color=ACCENT2).pack(fill=tk.X)
+
+        ghost_button(f, "Register New Account", self.open_student_registration).pack(fill=tk.X, pady=(10, 0))
+
+    def open_student_registration(self):
+        w = styled_window(self.root, "Student Registration", 400, 460)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=360, height=420)
+
+        tk.Frame(card, bg=ACCENT, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=30, pady=18)
+
+        tk.Label(f, text="👤  Student Registration", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 12))
+
+        fields = ["Full Name", "Department", "Semester (1-8)", "Username", "Password"]
+        entries = []
+        for label in fields:
+            form_label(f, label).pack(anchor="w")
+            e = styled_entry(f, show="•" if "Password" in label else None)
+            e.pack(fill=tk.X, pady=(1, 6))
+            entries.append(e)
+
+        entries[0].focus_set()
+
+        def save():
+            vals = [e.get().strip() for e in entries]
+            if any(not v for v in vals):
+                messagebox.showwarning("Incomplete Form", "Please fill in all registration fields.", parent=w)
+                return
+
+            try:
+                sem = int(vals[2])
+                if not (1 <= sem <= 10):
+                    raise ValueError
+            except ValueError:
+                messagebox.showwarning("Validation Error", "Semester must be a valid number between 1 and 10.", parent=w)
+                return
+
+            try:
+                cursor.execute(
+                    "INSERT INTO students(name, department, semester, username, password) VALUES (?, ?, ?, ?, ?)",
+                    (vals[0], vals[1], sem, vals[3], vals[4])
+                )
+                conn.commit()
+                log_action(f"New student registered: {vals[0]} ({vals[3]})")
+                messagebox.showinfo("Success", "✓ Account registered successfully! You can now log in.", parent=w)
+                w.destroy()
+            except sqlite3.IntegrityError:
+                messagebox.showerror("Error", "That username is already taken. Please choose another.", parent=w)
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        accent_button(f, "Create Account", save).pack(fill=tk.X, pady=(10, 0))
+
+    def open_student_panel(self, student_row):
+        w = styled_window(self.root, "Student Portal", 400, 370)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=360, height=330)
+
+        tk.Frame(card, bg=ACCENT2, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
+
+        tk.Label(f, text=f"👋  Welcome, {student_row[1]}", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 2))
+        sub_label(f, f"{student_row[2]}  •  Semester {student_row[3]}").pack(pady=(0, 14))
+        divider(f).pack(fill=tk.X, pady=(0, 16))
+
+        tk.Label(f, text="What would you like to do?", font=FONT_BODY, fg=SUBTEXT, bg=CARD).pack(pady=(0, 12))
+
+        accent_button(
+            f, "🔴  Report a Lost Item",
+            lambda: self.open_add_lost(student_row),
+            color=ACCENT2
+        ).pack(fill=tk.X, pady=5)
+
+        accent_button(
+            f, "📋  View My Reported Items",
+            lambda: self.open_my_reports(student_row),
+            color=ACCENT
+        ).pack(fill=tk.X, pady=5)
+
+    # ─── Report Lost & Found ──────────────────────────────────────────────────
+    def open_add_lost(self, student_row):
+        w = styled_window(self.root, "Report Lost Item", 400, 400)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=360, height=360)
+
+        tk.Frame(card, bg=ACCENT2, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=30, pady=18)
+
+        tk.Label(f, text="🔴  Report Lost Belonging", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 14))
+
+        form_label(f, "Item Name (e.g. Blue Bottle, Calculator)").pack(anchor="w")
+        e_item = styled_entry(f)
+        e_item.pack(fill=tk.X, pady=(2, 8))
+
+        form_label(f, "Color / Distinguishing Feature").pack(anchor="w")
+        e_color = styled_entry(f)
+        e_color.pack(fill=tk.X, pady=(2, 8))
+
+        form_label(f, "Last Seen Location / Room").pack(anchor="w")
+        e_loc = styled_entry(f)
+        e_loc.pack(fill=tk.X, pady=(2, 16))
+
+        def save():
+            item = e_item.get().strip()
+            color = e_color.get().strip()
+            loc = e_loc.get().strip()
+            if not item or not color or not loc:
+                messagebox.showwarning("Warning", "Please fill in all item fields.", parent=w)
+                return
+
+            try:
+                date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                cursor.execute(
+                    "INSERT INTO lost_items(student_id, item_name, color, location, status, date) VALUES (?, ?, ?, ?, ?, ?)",
+                    (student_row[0], item, color, loc, "Searching", date_str)
+                )
+                conn.commit()
+                log_action(f"Lost item reported by {student_row[1]}: {item}")
+                messagebox.showinfo("Submitted", "✓ Lost report logged successfully!", parent=w)
+                w.destroy()
+                auto_match(item, color, loc, reporting_type="lost")
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        accent_button(f, "Submit Lost Report", save, color=ACCENT2).pack(fill=tk.X)
+
+    def open_add_found(self):
+        w = styled_window(self.root, "Report Found Item", 400, 440)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=360, height=400)
+
+        tk.Frame(card, bg=SUCCESS, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=30, pady=18)
+
+        tk.Label(f, text="🟢  Report Found Belonging", font=FONT_CARD, fg=TEXT, bg=CARD).pack(pady=(4, 14))
+
+        form_label(f, "Finder / Staff Name").pack(anchor="w")
+        e_finder = styled_entry(f)
+        e_finder.pack(fill=tk.X, pady=(2, 8))
+
+        form_label(f, "Item Name").pack(anchor="w")
+        e_item = styled_entry(f)
+        e_item.pack(fill=tk.X, pady=(2, 8))
+
+        form_label(f, "Color / Feature").pack(anchor="w")
+        e_color = styled_entry(f)
+        e_color.pack(fill=tk.X, pady=(2, 8))
+
+        form_label(f, "Found Location / Room").pack(anchor="w")
+        e_loc = styled_entry(f)
+        e_loc.pack(fill=tk.X, pady=(2, 16))
+
+        def save():
+            finder = e_finder.get().strip()
+            item = e_item.get().strip()
+            color = e_color.get().strip()
+            loc = e_loc.get().strip()
+            if not finder or not item or not color or not loc:
+                messagebox.showwarning("Warning", "Please complete all fields.", parent=w)
+                return
+
+            try:
+                date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                cursor.execute(
+                    "INSERT INTO found_items(watchman_name, item_name, color, location, status, date) VALUES (?, ?, ?, ?, ?, ?)",
+                    (finder, item, color, loc, "Found", date_str)
+                )
+                conn.commit()
+                log_action(f"Found item logged by {finder}: {item}")
+                messagebox.showinfo("Saved", "✓ Found item recorded in registry!", parent=w)
+                w.destroy()
+                auto_match(item, color, loc, reporting_type="found")
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        accent_button(f, "Submit Found Report", save, color=SUCCESS).pack(fill=tk.X)
+
+    # ─── Viewing Records ──────────────────────────────────────────────────────
+    def open_show_lost(self):
+        w = styled_window(self.root, "Lost Items Registry", 620, 420)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=580, height=380)
+
+        tk.Frame(card, bg=ACCENT2, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
+
+        hdr = tk.Frame(f, bg=CARD)
+        hdr.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(hdr, text="🔴  Registered Lost Items", font=FONT_CARD, fg=TEXT, bg=CARD).pack(side=tk.LEFT)
+
+        lb_frame, lb = styled_listbox(f)
+        lb_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        item_rows = []
+
+        def refresh():
+            lb.delete(0, tk.END)
+            item_rows.clear()
+            try:
+                cursor.execute("SELECT id, item_name, color, location, status, date FROM lost_items")
+                rows = cursor.fetchall()
+                if not rows:
+                    lb.insert(tk.END, "  No lost items recorded.")
+                for i, r in enumerate(rows):
+                    item_rows.append(r)
+                    icon = "⏳" if r[4] == "Searching" else "✅"
+                    txt = f"  {icon} #{r[0]} | {r[1]:<16} | {r[2]:<10} | {r[3]:<16} | {r[4]}"
+                    lb.insert(tk.END, txt)
+                    if r[4] == "Returned":
+                        lb.itemconfig(i, fg=SUCCESS)
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        def mark_returned():
+            sel = lb.curselection()
+            if not sel or not item_rows:
+                messagebox.showwarning("Select Item", "Please select an item first.", parent=w)
+                return
+            item = item_rows[sel[0]]
+            try:
+                cursor.execute("UPDATE lost_items SET status='Returned' WHERE id=?", (item[0],))
+                conn.commit()
+                log_action(f"Marked lost item #{item[0]} ({item[1]}) as Returned")
+                refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        btn_bar = tk.Frame(f, bg=CARD)
+        btn_bar.pack(fill=tk.X)
+        accent_button(btn_bar, "✓  Mark as Returned", mark_returned, color=SUCCESS).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        accent_button(btn_bar, "🔄  Refresh", refresh, color=ACCENT).pack(side=tk.LEFT, padx=(4, 0))
+
+        refresh()
+
+    def open_show_found(self):
+        w = styled_window(self.root, "Found Items Registry", 620, 420)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=580, height=380)
+
+        tk.Frame(card, bg=SUCCESS, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
+
+        hdr = tk.Frame(f, bg=CARD)
+        hdr.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(hdr, text="🟢  Registered Found Items", font=FONT_CARD, fg=TEXT, bg=CARD).pack(side=tk.LEFT)
+
+        lb_frame, lb = styled_listbox(f)
+        lb_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        item_rows = []
+
+        def refresh():
+            lb.delete(0, tk.END)
+            item_rows.clear()
+            try:
+                cursor.execute("SELECT id, item_name, color, location, status, watchman_name FROM found_items")
+                rows = cursor.fetchall()
+                if not rows:
+                    lb.insert(tk.END, "  No found items recorded.")
+                for i, r in enumerate(rows):
+                    item_rows.append(r)
+                    icon = "📦" if r[4] == "Found" else "✅"
+                    txt = f"  {icon} #{r[0]} | {r[1]:<16} | {r[2]:<10} | {r[3]:<16} | {r[4]}"
+                    lb.insert(tk.END, txt)
+                    if r[4] == "Returned":
+                        lb.itemconfig(i, fg=SUCCESS)
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        def mark_claimed():
+            sel = lb.curselection()
+            if not sel or not item_rows:
+                messagebox.showwarning("Select Item", "Please select an item first.", parent=w)
+                return
+            item = item_rows[sel[0]]
+            try:
+                cursor.execute("UPDATE found_items SET status='Returned' WHERE id=?", (item[0],))
+                conn.commit()
+                log_action(f"Marked found item #{item[0]} ({item[1]}) as Claimed/Returned")
+                refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        btn_bar = tk.Frame(f, bg=CARD)
+        btn_bar.pack(fill=tk.X)
+        accent_button(btn_bar, "✓  Mark as Claimed", mark_claimed, color=SUCCESS).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        accent_button(btn_bar, "🔄  Refresh", refresh, color=ACCENT).pack(side=tk.LEFT, padx=(4, 0))
+
+        refresh()
+
+    def open_my_reports(self, student_row):
+        w = styled_window(self.root, "My Reported Items", 560, 380)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=520, height=340)
+
+        tk.Frame(card, bg=ACCENT, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
+
+        tk.Label(f, text=f"📋  Reports by {student_row[1]}", font=FONT_CARD, fg=TEXT, bg=CARD).pack(anchor="w", pady=(0, 8))
+
+        lb_frame, lb = styled_listbox(f)
+        lb_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        my_items = []
+
+        def refresh():
+            lb.delete(0, tk.END)
+            my_items.clear()
+            try:
+                cursor.execute("SELECT id, item_name, color, location, status FROM lost_items WHERE student_id=?", (student_row[0],))
+                rows = cursor.fetchall()
+                if not rows:
+                    lb.insert(tk.END, "  You have not submitted any lost reports yet.")
+                for i, r in enumerate(rows):
+                    my_items.append(r)
+                    icon = "⏳" if r[4] == "Searching" else "✅"
+                    txt = f"  {icon} #{r[0]} | {r[1]:<18} | {r[2]:<10} | {r[3]:<16} | {r[4]}"
+                    lb.insert(tk.END, txt)
+                    if r[4] == "Returned":
+                        lb.itemconfig(i, fg=SUCCESS)
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        def mark_recovered():
+            sel = lb.curselection()
+            if not sel or not my_items:
+                messagebox.showwarning("Select Item", "Please select an item to update.", parent=w)
+                return
+            it = my_items[sel[0]]
+            try:
+                cursor.execute("UPDATE lost_items SET status='Returned' WHERE id=?", (it[0],))
+                conn.commit()
+                log_action(f"Student marked lost item #{it[0]} as Recovered")
+                refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        btn_bar = tk.Frame(f, bg=CARD)
+        btn_bar.pack(fill=tk.X)
+        accent_button(btn_bar, "✓  I Found My Item", mark_recovered, color=SUCCESS).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        accent_button(btn_bar, "🔄  Refresh", refresh, color=ACCENT).pack(side=tk.LEFT, padx=(4, 0))
+
+        refresh()
+
+    def open_show_matches(self):
+        w = styled_window(self.root, "Item Matches", 600, 420)
+        card = card_frame(w)
+        card.place(relx=0.5, rely=0.5, anchor="center", width=560, height=380)
+
+        tk.Frame(card, bg=ACCENT, height=4).pack(fill=tk.X)
+        f = tk.Frame(card, bg=CARD)
+        f.pack(fill=tk.BOTH, expand=True, padx=16, pady=14)
+
+        hdr = tk.Frame(f, bg=CARD)
+        hdr.pack(fill=tk.X, pady=(0, 8))
+        tk.Label(hdr, text="🔗  Matched Items", font=FONT_CARD, fg=TEXT, bg=CARD).pack(side=tk.LEFT)
+        sub_label(hdr, "  Select a pair and verify return").pack(side=tk.LEFT, pady=2)
+
+        lb_frame, lb = styled_listbox(f)
+        lb_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        pairs = []
+
+        def refresh():
+            lb.delete(0, tk.END)
+            pairs.clear()
+            try:
+                cursor.execute("SELECT id, student_id, item_name, color, location FROM lost_items WHERE status='Searching'")
+                lost_list = cursor.fetchall()
+
+                cursor.execute("SELECT id, watchman_name, item_name, color, location FROM found_items WHERE status='Found'")
+                found_list = cursor.fetchall()
+
+                count = 0
+                for a in lost_list:
+                    for b in found_list:
+                        if is_match(a[2], a[3], a[4], b[2], b[3], b[4]):
+                            line = f"  🔗  Lost #{a[0]} ({a[2]}) ↔ Found #{b[0]} ({b[2]}) | Loc: {a[4]}"
+                            lb.insert(tk.END, line)
+                            lb.itemconfig(count, fg=SUCCESS)
+                            pairs.append({"lid": a[0], "fid": b[0], "name": a[2]})
+                            count += 1
+
+                if count == 0:
+                    lb.insert(tk.END, "  No active matches found at this time.")
+            except Exception as e:
+                print(f"Match calculation error: {e}")
+
+        def do_verify():
+            sel = lb.curselection()
+            if not sel or not pairs:
+                messagebox.showwarning("Warning", "Please select a match pair first.", parent=w)
+                return
+            p = pairs[sel[0]]
+            try:
+                date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                cursor.execute("UPDATE lost_items SET status='Returned' WHERE id=?", (p["lid"],))
+                cursor.execute("UPDATE found_items SET status='Returned' WHERE id=?", (p["fid"],))
+                cursor.execute(
+                    "INSERT INTO matches(lost_id, found_id, verified, date) VALUES (?, ?, 'Yes', ?)",
+                    (p["lid"], p["fid"], date_str)
+                )
+                conn.commit()
+                log_action(f"Verified match: Lost #{p['lid']} matched with Found #{p['fid']}")
+                messagebox.showinfo("Verified", "✓ Match verified and items marked as Returned!", parent=w)
+                refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=w)
+
+        refresh()
+        accent_button(f, "✔  Verify Selected Match", do_verify, color=SUCCESS).pack(fill=tk.X)
+
+
+# ─── Application Entry Point ──────────────────────────────────────────────────
+def main():
+    root = tk.Tk()
+    app = LostFoundCampusApp(root)
+    root.mainloop()
+
+
 if __name__ == "__main__":
-    rt = tk.Tk()
-    app = LostFoundApp(rt)
-    rt.mainloop()
+    main()
