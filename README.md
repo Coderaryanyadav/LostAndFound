@@ -4,20 +4,85 @@
 [![Flask](https://img.shields.io/badge/Flask-Web%20App-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Tkinter](https://img.shields.io/badge/Tkinter-Desktop%20GUI-blue)](https://docs.python.org/3/library/tkinter.html)
 [![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![Platform](https://img.shields.io/badge/Platform-Cross--Platform-lightgrey)](#)
-[![Tests](https://img.shields.io/badge/Tests-Passing-success)](#)
+[![Tests](https://img.shields.io/badge/Tests-47%2F47%20Passing-success)](#testing)
 
-A complete campus lost and found item recovery platform for colleges, offering both an interactive **Web Application** with a RESTful API and an administrative **Desktop GUI Application** with student self-registration and smart match verification.
+An integrated campus asset recovery platform featuring an administrative Desktop Application (Tkinter) and a responsive Web Portal (Flask REST API) powered by intelligent item-matching algorithms.
 
-**Developer:** Aryan Yadav  
+**Lead Developer:** Aryan Yadav  
 **Institution:** SBMP College  
 **Repository:** [Coderaryanyadav/LostAndFound](https://github.com/Coderaryanyadav/LostAndFound)
 
 ---
 
-## 🚀 Quick Start
+## 🏗️ System Architecture
 
-### 1. Installation
+```mermaid
+graph TD
+    subgraph ClientLayer["Client Interfaces"]
+        W[Web Browser / Mobile]
+        D[Desktop GUI / Admin & Security Station]
+    end
+
+    subgraph AppLayer["Application Layer"]
+        F[Flask Web Server - app.py]
+        T[Tkinter Desktop Engine - main.py]
+        M[Smart Match Engine]
+    end
+
+    subgraph DataLayer["Storage Layer"]
+        DB1[(college_data.db)]
+        DB2[(lost_found.db)]
+        L[Audit Activity Log - log.txt]
+    end
+
+    W -->|REST API Requests| F
+    D -->|Direct Local Events| T
+
+    F -->|Read / Write| DB1
+    T -->|Read / Write| DB2
+    T -->|Audit Records| L
+
+    T -->|Invoke Matching| M
+    F -->|Query Matching Rooms| DB1
+```
+
+---
+
+## 🔄 Match Resolution Workflow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Student as Student
+    actor Watchman as Campus Watchman
+    participant Engine as Lost & Found Engine
+    actor Admin as Administrator
+
+    Student->>Engine: Report Lost Belonging (Item, Color, Location)
+    Engine-->>Student: Confirm Report Stored
+    Watchman->>Engine: Turn in Found Item (Item, Color, Location)
+    Engine->>Engine: Run Smart Match Algorithm
+    alt Probable Match Found
+        Engine-->>Watchman: Live Alert: Counterpart item detected!
+        Admin->>Engine: Inspect Matched Item Pair
+        Admin->>Engine: Verify Ownership & Release
+        Engine->>Engine: Update Status to "Returned"
+        Engine-->>Student: Case Marked Resolved
+    else No Immediate Match
+        Engine->>Engine: Keep Status as "Searching" / "Available"
+    end
+```
+
+---
+
+## 🚀 Quick Setup & Execution
+
+### Prerequisites
+
+- Python 3.8+
+- SQLite3
+
+### 1. Clone & Install Dependencies
 
 ```bash
 git clone https://github.com/Coderaryanyadav/LostAndFound.git
@@ -25,74 +90,59 @@ cd LostAndFound
 pip install -r requirements.txt
 ```
 
-### 2. Launch the Web Application
+### 2. Run the Web Application
 
 ```bash
 python app.py
 ```
-Open your browser at `http://127.0.0.1:5000` to access the dashboard.
+Open your browser to: `http://127.0.0.1:5000`
 
-### 3. Launch the Desktop Application
+### 3. Run the Desktop Application
 
 ```bash
 python main.py
 ```
-Launches the desktop GUI for student self-registration, watchman logging, and admin match verification.
 
 ---
 
 ## 🔑 Default Credentials
 
-- **Admin Username:** `admin`
-- **Admin Password:** `admin`
-
-Students can register their own accounts directly through the "New Student? Register Here" portal in the desktop app.
+- **Admin Account:** `admin` / `admin`
+- **Student Accounts:** Self-register via the **"New Student? Register Here"** button on the desktop landing screen.
 
 ---
 
-## ✨ Features
+## ⚙️ Features
 
-- 📊 **Real-time Web Dashboard** - Live metrics for reported items, recoveries, and active matches.
-- 🎓 **Student Self-Registration & Portal** - Students can create personal accounts, report lost belongings, and view status.
-- 📦 **Campus Security / Found Logging** - Dedicated reporting workflow for found items across classrooms and labs.
-- 🎯 **Smart Match Engine** - Multi-attribute matching with keyword tolerance, location proximity, and color filtering.
-- 🔗 **Admin Verification Flow** - One-click resolution and item return verification.
-- 💾 **Data Export** - Instant CSV export of registry records.
-- 🛡️ **Audit Logging** - Timestamped record of logins, submissions, and resolutions (`log.txt`).
-- 🎨 **Unified Dark UI** - Modern interface for both web and desktop versions.
-
----
-
-## 📁 Repository Structure
-
-```
-LostAndFound/
-├── app.py              # Flask Web Application & REST API
-├── main.py             # Desktop GUI Application (Tkinter & SQLite)
-├── templates/
-│   └── index.html      # Responsive Web UI
-├── static/
-│   └── style.css       # Dark-themed modern CSS stylesheet
-├── heavy_test.py       # Comprehensive API & functional test suite
-├── test_app.py         # In-memory web route tests
-├── test_main.py        # Desktop logic & database tests
-├── requirements.txt    # Project dependencies
-└── README.md           # Documentation
-```
+| Feature | Description | Platform |
+| :--- | :--- | :--- |
+| **Real-Time Dashboard** | Visual statistics on active reports and matched belongings | Web |
+| **Student Self-Service** | Register, login, report personal lost items, and track status | Desktop |
+| **Found Registry** | Dedicated intake workflow for campus security and watchmen | Both |
+| **Smart Matching** | Keyword token analysis, color checking, and room proximity logic | Both |
+| **CSV Data Export** | One-click offline backup generation | Web & Desktop |
+| **Audit Trails** | Timestamped action logging saved to `log.txt` | Desktop |
 
 ---
 
-## 🧪 Testing
-
-Run all automated test suites:
+## 🧪 Testing & Verification
 
 ```bash
-# Run web route unit tests
+# Run web route unit test suite
 python -m unittest test_app.py
 
-# Run desktop logic & matching tests
+# Run desktop logic & matching algorithm test suite
 python -m unittest test_main.py
 
-# Run comprehensive end-to-end API test (with app.py running)
+# Run complete end-to-end API test suite (start app.py first)
 python heavy_test.py
 ```
+
+---
+
+## 📜 Community & Governance
+
+- [Contributing Guidelines](file:///Users/aryan/Desktop/PROJECTS/NOT%20TESTED/8%20-%20LostAndFoundCollege/CONTRIBUTING.md)
+- [Code of Conduct](file:///Users/aryan/Desktop/PROJECTS/NOT%20TESTED/8%20-%20LostAndFoundCollege/CODE_OF_CONDUCT.md)
+- [Security Policy](file:///Users/aryan/Desktop/PROJECTS/NOT%20TESTED/8%20-%20LostAndFoundCollege/SECURITY.md)
+- [Project License](file:///Users/aryan/Desktop/PROJECTS/NOT%20TESTED/8%20-%20LostAndFoundCollege/LICENSE)
